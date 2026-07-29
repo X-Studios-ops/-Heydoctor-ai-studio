@@ -182,13 +182,12 @@ class OpenAI_OpenRouterManager:
         st.session_state.current_key_index = (st.session_state.current_key_index + 1) % len(self.keys)
         return self.get_client()
 
-    def stream_completion(self, messages, model="meta-llama/llama-3.1-8b-instruct:free", temperature=0.7):
+    def stream_completion(self, messages, model="google/gemini-2.5-flash", temperature=0.7):
         max_retries = len(self.keys)
         
         for attempt in range(max_retries):
             client = self.get_client()
             try:
-                # Using the official OpenAI SDK structure you requested
                 response = client.chat.completions.create(
                     model=model,
                     messages=messages,
@@ -279,8 +278,6 @@ with st.sidebar:
                     st.success("Registered! You can login now.")
                 except Exception as e:
                     st.error(f"Error: {e}")
-        st.stop()
-    
     else:
         st.markdown(f"**Operator:**\n`{st.session_state.user.email}`")
         
@@ -306,8 +303,23 @@ with st.sidebar:
             st.rerun()
 
 # ==========================================
-# 7. ADSTERRA UNLOCK SCREEN
+# 7. PRE-LOGIN MAIN SCREEN & ADSTERRA
 # ==========================================
+if st.session_state.user is None:
+    # Ekdum mast Welcome UI before Login
+    st.markdown("<div style='margin-top: 10vh;'></div>", unsafe_allow_html=True)
+    st.markdown("<h1 class='hero-title'>Heydoctor Web Manager AI</h1>", unsafe_allow_html=True)
+    
+    st.markdown("""
+        <div class='glass-card' style='text-align:center; max-width: 550px; margin: 30px auto; padding: 40px 20px;'>
+            <h2 style='color: #E2E8F0; margin-bottom: 15px;'>Welcome to the Studio</h2>
+            <p style='color: #94A3B8; font-size: 1.15rem; margin-bottom: 25px;'>Please <b>Login</b> and <b>Sign Up</b> from the sidebar to continue.</p>
+            <hr style='border-color: rgba(255,255,255,0.05); margin: 25px 0;'>
+            <p style='color: #00C6FF; font-weight: 700; font-size: 1.2rem; text-shadow: 0 0 10px rgba(0, 198, 255, 0.4); margin-bottom: 0;'>✨ Created by Pratyush Ranjan Roul</p>
+        </div>
+    """, unsafe_allow_html=True)
+    st.stop()
+
 if st.session_state.requests_left <= 0:
     st.markdown("<h1 class='hero-title'>Access Locked</h1>", unsafe_allow_html=True)
     st.markdown("<div class='glass-card' style='text-align:center;'>", unsafe_allow_html=True)
@@ -342,11 +354,9 @@ tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 
 # --- CHAT INTERFACE TAB ---
 with tab_chat:
+    # Ab sirf Gemini-2.5-flash ka option aayega
     ai_model = st.selectbox("Intelligence Engine", [
-        "google/gemini-2.5-flash",
-        "meta-llama/llama-3.1-8b-instruct:free", 
-        "google/gemma-2-9b-it:free", 
-        "microsoft/phi-3-mini-128k-instruct:free"
+        "google/gemini-2.5-flash"
     ], label_visibility="collapsed")
     
     for msg in st.session_state.messages:
@@ -386,7 +396,7 @@ with tab_chat:
             deduct_credit()
             st.rerun() 
         else:
-            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **Server Busy:** The free AI model is currently overloaded or unavailable. Please try again or switch to a different model from the list above."})
+            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **Server Busy:** The free AI model is currently overloaded or unavailable. Please try again later."})
             st.rerun() 
 
 # --- EMBED WIDGET TAB ---
