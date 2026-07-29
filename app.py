@@ -1,10 +1,11 @@
 import streamlit as st
-import requests
 import json
 import time
 import random
 from datetime import datetime
 from supabase import create_client
+from openai import OpenAI
+import openai
 
 # ==========================================
 # 1. PAGE CONFIGURATION & SEO
@@ -16,7 +17,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# SEO & Meta Tags
 st.markdown("""
     <head>
         <meta name="description" content="Heydoctor Web Manager AI: Next-generation enterprise intelligence and web management platform.">
@@ -29,7 +29,6 @@ st.markdown("""
 # ==========================================
 st.markdown("""
     <style>
-    /* Animated Gradient Background */
     .stApp {
         background-color: #050505;
         background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #050505 80%);
@@ -41,7 +40,6 @@ st.markdown("""
     footer {visibility: hidden;}
     header {background: transparent !important;}
 
-    /* Floating Animation for Header */
     @keyframes float {
         0% { transform: translateY(0px); }
         50% { transform: translateY(-8px); }
@@ -69,7 +67,6 @@ st.markdown("""
         letter-spacing: 1px;
     }
 
-    /* Glassmorphism Cards with Hover Float Effect */
     .glass-card {
         background: rgba(255, 255, 255, 0.03);
         backdrop-filter: blur(16px);
@@ -88,7 +85,6 @@ st.markdown("""
         border: 1px solid rgba(0, 198, 255, 0.5);
     }
 
-    /* Chat Messages styling */
     .stChatMessage {
         background: transparent !important;
         border: none !important;
@@ -102,7 +98,6 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(0, 198, 255, 0.5);
     }
 
-    /* Glowing Buttons */
     div.stButton > button:first-child {
         background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
         color: white;
@@ -120,7 +115,6 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(0, 198, 255, 0.6);
     }
     
-    /* Credit Card in Sidebar */
     .credit-card {
         background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.2) 100%);
         padding: 20px;
@@ -135,7 +129,6 @@ st.markdown("""
         transform: scale(1.02);
     }
     
-    /* Code highlight */
     code {
         color: #00C6FF !important;
         background-color: rgba(0, 198, 255, 0.1) !important;
@@ -146,7 +139,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. GLOBAL CONFIGURATION (CREDIT LIMITS)
+# 3. GLOBAL CONFIGURATION & SECRETS
 # ==========================================
 DEFAULT_CREDITS = 10
 
@@ -165,72 +158,67 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# API Manager
-class OpenRouterManager:
+# ==========================================
+# 4. OPENAI CLIENT MANAGER (OPENROUTER)
+# ==========================================
+class OpenAI_OpenRouterManager:
     def __init__(self, keys):
         self.keys = keys
         if "current_key_index" not in st.session_state:
             st.session_state.current_key_index = 0
 
-    def get_current_key(self):
-        return self.keys[st.session_state.current_key_index]
-
-    def rotate_key(self):
-        st.session_state.current_key_index = (st.session_state.current_key_index + 1) % len(self.keys)
-        return self.get_current_key()
-
-    def stream_completion(self, messages, model="meta-llama/llama-3.1-8b-instruct:free", temperature=0.7):
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        max_retries = len(self.keys)
-        
-        for attempt in range(max_retries):
-            current_key = self.get_current_key()
-            headers = {
-                "Authorization": f"Bearer {current_key}",
-                "Content-Type": "application/json",
+    def get_client(self):
+        current_key = self.keys[st.session_state.current_key_index]
+        return OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=current_key,
+            default_headers={
                 "HTTP-Referer": "https://heydoctor.ai",
                 "X-Title": "Heydoctor Web Manager AI"
             }
-            
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "stream": True
-            }
+        )
 
+    def rotate_key(self):
+        st.session_state.current_key_index = (st.session_state.current_key_index + 1) % len(self.keys)
+        return self.get_client()
+
+    def stream_completion(self, messages, model="meta-llama/llama-3.1-8b-instruct:free", temperature=0.7):
+        max_retries = len(self.keys)
+        
+        for attempt in range(max_retries):
+            client = self.get_client()
             try:
-                response = requests.post(url, headers=headers, json=payload, stream=True, timeout=15)
-                if response.status_code == 200:
-                    for line in response.iter_lines():
-                        if line:
-                            line = line.decode('utf-8')
-                            if line.startswith('data: ') and line != 'data: [DONE]':
-                                try:
-                                    chunk = json.loads(line[6:])
-                                    if 'choices' in chunk and len(chunk['choices']) > 0:
-                                        delta = chunk['choices'][0].get('delta', {})
-                                        if 'content' in delta:
-                                            yield delta['content']
-                                except json.JSONDecodeError:
-                                    continue
-                    return 
-                elif response.status_code in [429, 402]:
-                    self.rotate_key()
-                    time.sleep(1)
-                    continue
-                else:
-                    yield f"\n\n**API Error:** Server returned {response.status_code}."
-                    return
-            except requests.exceptions.RequestException:
+                # Using the official OpenAI SDK structure you requested
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=1500,
+                    temperature=temperature,
+                    stream=True
+                )
+                
+                for chunk in response:
+                    if chunk.choices[0].delta.content is not None:
+                        yield chunk.choices[0].delta.content
+                return 
+
+            except openai.RateLimitError:
+                self.rotate_key()
+                time.sleep(1)
+                continue
+            except openai.APIError as e:
+                yield f"\n\n**API Error:** {str(e)}"
+                return
+            except Exception as e:
                 self.rotate_key()
                 continue
+                
         yield "\n\n**System Alert:** All API endpoints overloaded. Try again."
 
-api_manager = OpenRouterManager(OPENROUTER_KEYS)
+api_manager = OpenAI_OpenRouterManager(OPENROUTER_KEYS)
 
 # ==========================================
-# 4. SESSION & DB MANAGEMENT
+# 5. SESSION & DB MANAGEMENT
 # ==========================================
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -259,7 +247,7 @@ def optimize_history(messages, max_history=6):
     return [messages[0]] + messages[-(max_history):]
 
 # ==========================================
-# 5. AUTHENTICATION (SIDEBAR)
+# 6. AUTHENTICATION (SIDEBAR)
 # ==========================================
 with st.sidebar:
     st.markdown("### 🧬 Heydoctor Manager")
@@ -318,7 +306,7 @@ with st.sidebar:
             st.rerun()
 
 # ==========================================
-# 6. ADSTERRA UNLOCK SCREEN
+# 7. ADSTERRA UNLOCK SCREEN
 # ==========================================
 if st.session_state.requests_left <= 0:
     st.markdown("<h1 class='hero-title'>Access Locked</h1>", unsafe_allow_html=True)
@@ -345,7 +333,7 @@ if st.session_state.requests_left <= 0:
     st.stop()
 
 # ==========================================
-# 7. MAIN DASHBOARD & TABS
+# 8. MAIN DASHBOARD & TABS
 # ==========================================
 st.markdown("<h1 class='hero-title'>Heydoctor Web Manager AI</h1>", unsafe_allow_html=True)
 st.markdown("<p class='hero-subtitle'>Command Center & Ecosystem Integrations</p>", unsafe_allow_html=True)
@@ -355,6 +343,7 @@ tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 # --- CHAT INTERFACE TAB ---
 with tab_chat:
     ai_model = st.selectbox("Intelligence Engine", [
+        "google/gemini-2.5-flash",
         "meta-llama/llama-3.1-8b-instruct:free", 
         "google/gemma-2-9b-it:free", 
         "microsoft/phi-3-mini-128k-instruct:free"
@@ -374,7 +363,6 @@ with tab_chat:
         """, unsafe_allow_html=True)
 
     if prompt := st.chat_input("Enter command sequence..."):
-        # 1. User ka prompt dikhao aur save karo
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -382,7 +370,6 @@ with tab_chat:
         full_context = [{"role": "system", "content": st.session_state.system_prompt}] + st.session_state.messages
         optimized_context = optimize_history(full_context)
 
-        # 2. Response Generate karo
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
@@ -394,13 +381,11 @@ with tab_chat:
                 
                 message_placeholder.markdown(full_response)
         
-        # 3. Bug Fix: Smart Error Handling (No popping user messages!)
         if "**API Error:**" not in full_response and "**System Alert:**" not in full_response:
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             deduct_credit()
             st.rerun() 
         else:
-            # Server error hone par ek neat error message save hoga, credit nahi katega.
             st.session_state.messages.append({"role": "assistant", "content": "⚠️ **Server Busy:** The free AI model is currently overloaded or unavailable. Please try again or switch to a different model from the list above."})
             st.rerun() 
 
