@@ -1,384 +1,383 @@
-import random
-import time
-import requests
 import streamlit as st
+import requests
+import json
+import time
+import random
+from datetime import datetime
 from supabase import create_client
 
-# ================= 1. PAGE CONFIG & CUSTOM CSS =================
+# ==========================================
+# 1. PAGE CONFIGURATION & SEO
+# ==========================================
 st.set_page_config(
-    page_title="Heydoctor AI Studio",
+    page_title="Heydoctor Web Manager AI",
     page_icon="🧬",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
-st.markdown(
-    """
+# SEO & Meta Tags
+st.markdown("""
+    <head>
+        <meta name="description" content="Heydoctor Web Manager AI: Next-generation enterprise intelligence and web management platform.">
+        <meta name="keywords" content="AI, SaaS, Heydoctor, Web Manager, Data Analysis, Widget">
+    </head>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 2. PREMIUM UI/UX (GLASSMORPHISM CSS)
+# ==========================================
+st.markdown("""
     <style>
     .stApp {
-        background-color: #0E1117;
-        color: #FAFAFA;
-        font-family: 'Inter', sans-serif;
+        background-color: #050505;
+        background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #050505 70%);
+        color: #E2E8F0;
+        font-family: 'Inter', -apple-system, sans-serif;
     }
-    .main-header {
-        font-size: 2.8rem;
+    
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {background: transparent !important;}
+
+    .glass-card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+    }
+
+    .hero-title {
+        font-size: 3.5rem;
         font-weight: 800;
-        background: -webkit-linear-gradient(45deg, #00C6FF, #0072FF);
+        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 5px;
+        margin-bottom: 0.5rem;
+        letter-spacing: -1px;
     }
-    .sub-header {
-        text-align: center;
-        color: #888;
+    .hero-subtitle {
+        color: #94A3B8;
         font-size: 1.1rem;
-        margin-bottom: 30px;
+        margin-bottom: 2rem;
     }
+
+    .stChatMessage {
+        background: transparent !important;
+        border: none !important;
+    }
+    .stChatMessage [data-testid="chatAvatarIcon-user"] {
+        background-color: #334155;
+    }
+    .stChatMessage [data-testid="chatAvatarIcon-assistant"] {
+        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+    }
+
     div.stButton > button:first-child {
-        background: linear-gradient(90deg, #00C6FF 0%, #0072FF 100%);
+        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
         color: white;
         border: none;
-        padding: 10px 24px;
-        font-size: 18px;
-        font-weight: bold;
         border-radius: 8px;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
         transition: all 0.3s ease;
         width: 100%;
     }
     div.stButton > button:first-child:hover {
-        transform: scale(1.02);
-        box-shadow: 0px 0px 15px rgba(0, 198, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 198, 255, 0.4);
     }
+    
     .credit-card {
-        background-color: #1E2127;
+        background-color: rgba(255, 255, 255, 0.05);
         padding: 20px;
         border-radius: 12px;
         border-left: 5px solid #00C6FF;
         margin-bottom: 20px;
+        backdrop-filter: blur(10px);
+    }
+    
+    code {
+        color: #00C6FF !important;
+        background-color: rgba(0, 198, 255, 0.1) !important;
     }
     </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
-# ================= 2. LOAD SECRETS =================
+# ==========================================
+# 3. GLOBAL CONFIGURATION (CREDIT LIMITS)
+# ==========================================
+DEFAULT_CREDITS = 5
+
 try:
-  SUPABASE_URL = st.secrets["SUPABASE_URL"]
-  SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-  ADSTERRA_SMARTLINK = st.secrets["ADSTERRA_SMARTLINK"]
-  OPENROUTER_KEYS = st.secrets["OPENROUTER_KEYS"]
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    ADSTERRA_SMARTLINK = st.secrets["ADSTERRA_SMARTLINK"]
+    OPENROUTER_KEYS = st.secrets["OPENROUTER_KEYS"]
 except Exception as e:
-  st.error(
-      f"Missing Secrets Configuration: {e}. Please check your secrets.toml or"
-      " Streamlit Cloud Secrets settings."
-  )
-  st.stop()
-
-BASE_URL = "https://openrouter.ai/api/v1"
-
+    st.error(f"Missing Secrets Configuration: {e}.")
+    st.stop()
 
 @st.cache_resource
 def init_supabase():
-  return create_client(SUPABASE_URL, SUPABASE_KEY)
-
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 supabase = init_supabase()
 
+# API Manager
+class OpenRouterManager:
+    def __init__(self, keys):
+        self.keys = keys
+        if "current_key_index" not in st.session_state:
+            st.session_state.current_key_index = 0
 
-# Helper: Rotate between 5 OpenRouter keys randomly for load balancing
-def get_request_headers():
-  active_key = random.choice(OPENROUTER_KEYS)
-  return {
-      "Authorization": f"Bearer {active_key}",
-      "Content-Type": "application/json",
-  }
+    def get_current_key(self):
+        return self.keys[st.session_state.current_key_index]
 
+    def rotate_key(self):
+        st.session_state.current_key_index = (st.session_state.current_key_index + 1) % len(self.keys)
+        return self.get_current_key()
 
-# ================= 3. SESSION STATE =================
+    def stream_completion(self, messages, model="google/gemini-2.5-flash", temperature=0.7):
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        max_retries = len(self.keys)
+        
+        for attempt in range(max_retries):
+            current_key = self.get_current_key()
+            headers = {
+                "Authorization": f"Bearer {current_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://heydoctor.ai",
+                "X-Title": "Heydoctor Web Manager AI"
+            }
+            
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "stream": True
+            }
+
+            try:
+                response = requests.post(url, headers=headers, json=payload, stream=True, timeout=15)
+                if response.status_code == 200:
+                    for line in response.iter_lines():
+                        if line:
+                            line = line.decode('utf-8')
+                            if line.startswith('data: ') and line != 'data: [DONE]':
+                                try:
+                                    chunk = json.loads(line[6:])
+                                    if 'choices' in chunk and len(chunk['choices']) > 0:
+                                        delta = chunk['choices'][0].get('delta', {})
+                                        if 'content' in delta:
+                                            yield delta['content']
+                                except json.JSONDecodeError:
+                                    continue
+                    return 
+                elif response.status_code in [429, 402]:
+                    self.rotate_key()
+                    time.sleep(1)
+                    continue
+                else:
+                    yield f"\n\n**API Error:** Server returned {response.status_code}."
+                    return
+            except requests.exceptions.RequestException:
+                self.rotate_key()
+                continue
+        yield "\n\n**System Alert:** All API endpoints overloaded. Try again."
+
+api_manager = OpenRouterManager(OPENROUTER_KEYS)
+
+# ==========================================
+# 4. SESSION & DB MANAGEMENT
+# ==========================================
 if "user" not in st.session_state:
-  st.session_state.user = None
+    st.session_state.user = None
 if "requests_left" not in st.session_state:
-  st.session_state.requests_left = 0
-
+    st.session_state.requests_left = 0
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "system_prompt" not in st.session_state:
+    st.session_state.system_prompt = "You are Heydoctor Web Manager AI, an elite enterprise assistant. Provide concise, highly analytical, and actionable responses to help users manage their web platforms."
 
 def fetch_user_limits(email):
-  db_res = (
-      supabase.table("users")
-      .select("requests_left")
-      .eq("email", email)
-      .execute()
-  )
-  if db_res.data:
-    return db_res.data[0]["requests_left"]
-  else:
-    supabase.table("users").insert(
-        {"email": email, "requests_left": 2}
-    ).execute()
-    return 2
-
-
-# ================= 4. AUTHENTICATION (SIDEBAR) =================
-with st.sidebar:
-  st.image("https://cdn-icons-png.flaticon.com/512/2920/2920323.png", width=70)
-  st.markdown("## 🧬 Heydoctor Access")
-
-  if st.session_state.user is None:
-    tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
-
-    with tab_login:
-      l_email = st.text_input("Email", key="l_email")
-      l_pass = st.text_input("Password", type="password", key="l_pass")
-      if st.button("Login to Studio", key="login_btn"):
-        try:
-          res = supabase.auth.sign_in_with_password(
-              {"email": l_email, "password": l_pass}
-          )
-          st.session_state.user = res.user
-          st.session_state.requests_left = fetch_user_limits(l_email)
-          st.success("Access Granted!")
-          st.rerun()
-        except Exception:
-          st.error("Invalid Email or Password.")
-
-    with tab_signup:
-      s_email = st.text_input("Email", key="s_email")
-      s_pass = st.text_input("Password", type="password", key="s_pass")
-      if st.button("Register Account", key="signup_btn"):
-        try:
-          supabase.auth.sign_up({"email": s_email, "password": s_pass})
-          supabase.table("users").insert(
-              {"email": s_email, "requests_left": 2}
-          ).execute()
-          st.success("Registered! You can login now.")
-        except Exception as e:
-          st.error(f"Error: {e}")
-    st.stop()
-
-  else:
-    st.markdown(f"**Logged in as:**\n`{st.session_state.user.email}`")
-
-    color = "#00C6FF" if st.session_state.requests_left > 0 else "#FF4B4B"
-    st.markdown(
-        f"""
-        <div class="credit-card" style="border-left-color: {color};">
-            <h3 style="margin:0; font-size: 22px; color:{color};">{st.session_state.requests_left}</h3>
-            <p style="margin:0; font-size: 13px; color:#888;">Generations Remaining</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if st.button("Logout", key="logout_btn"):
-      supabase.auth.sign_out()
-      st.session_state.user = None
-      st.rerun()
-
-# ================= 5. ADSTERRA UNLOCK SCREEN =================
-if st.session_state.requests_left <= 0:
-  st.markdown(
-      "<h1 class='main-header'>Heydoctor AI Studio</h1>", unsafe_allow_html=True
-  )
-  st.markdown(
-      "<div style='text-align:center; padding: 40px; background:#1E2127;"
-      " border-radius:15px; border: 1px solid #333;'>",
-      unsafe_allow_html=True,
-  )
-  st.warning("⚠️ **Free Generations Exhausted!**")
-  st.write(
-      "Support our ecosystem by visiting the sponsor link below to unlock **2"
-      " Free Requests** instantly."
-  )
-
-  st.markdown(
-      f"""
-        <a href="{ADSTERRA_SMARTLINK}" target="_blank" style="text-decoration:none;">
-            <div style="background: linear-gradient(90deg, #FF4B4B, #FF904B); color: white; padding: 14px 28px; border-radius: 8px; text-align: center; font-size: 17px; font-weight: bold; margin: 20px auto; width: 60%; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.4); cursor:pointer;">
-                🔓 Unlock 2 Free Requests
-            </div>
-        </a>
-    """,
-      unsafe_allow_html=True,
-  )
-
-  st.write("---")
-  if st.button(
-      "✅ I have visited the link, Restore Limits", use_container_width=True
-  ):
-    supabase.table("users").update({"requests_left": 2}).eq(
-        "email", st.session_state.user.email
-    ).execute()
-    st.session_state.requests_left = 2
-    st.success("Credits Restored! Enjoy creating.")
-    time.sleep(1)
-    st.rerun()
-  st.markdown("</div>", unsafe_allow_html=True)
-  st.stop()
-
-
-# ================= 6. MAIN STUDIO DASHBOARD =================
-st.markdown(
-    "<h1 class='main-header'>Heydoctor AI Studio</h1>", unsafe_allow_html=True
-)
-st.markdown(
-    "<p class='sub-header'>Next-Gen AI Image & Video Generation Powered by"
-    " OpenRouter</p>",
-    unsafe_allow_html=True,
-)
-
-tab_img, tab_vid = st.tabs(["🎨 Image Studio", "🎬 Video Studio"])
-
+    db_res = supabase.table("users").select("requests_left").eq("email", email).execute()
+    if db_res.data:
+        return db_res.data[0]["requests_left"]
+    else:
+        supabase.table("users").insert({"email": email, "requests_left": DEFAULT_CREDITS}).execute()
+        return DEFAULT_CREDITS
 
 def deduct_credit():
-  st.session_state.requests_left -= 1
-  supabase.table("users").update(
-      {"requests_left": st.session_state.requests_left}
-  ).eq("email", st.session_state.user.email).execute()
+    st.session_state.requests_left -= 1
+    supabase.table("users").update({"requests_left": st.session_state.requests_left}).eq("email", st.session_state.user.email).execute()
 
+def optimize_history(messages, max_history=6):
+    if len(messages) <= max_history:
+        return messages
+    return [messages[0]] + messages[-(max_history):]
 
-# --- IMAGE TAB ---
-with tab_img:
-  col1, col2 = st.columns([2, 1])
-  with col1:
-    img_prompt = st.text_area(
-        "Image Prompt:",
-        height=140,
-        placeholder=(
-            "E.g., A cinematic futuristic medical laboratory, neon glowing blue"
-            " lights, hyper-realistic, 8k..."
-        ),
-    )
-  with col2:
-    img_model = st.selectbox(
-        "Model",
-        [
-            "black-forest-labs/flux-schnell",
-            "stabilityai/stable-diffusion-3",
-            "google/gemini-2.5-flash",
-        ],
-    )
-    img_aspect = st.selectbox(
-        "Dimension", ["1:1 (Square)", "16:9 (Landscape)", "9:16 (Portrait)"]
-    )
+# ==========================================
+# 5. AUTHENTICATION (SIDEBAR)
+# ==========================================
+with st.sidebar:
+    st.markdown("### 🧬 Heydoctor Manager")
+    st.caption("Enterprise Intelligence Core")
+    
+    if st.session_state.user is None:
+        tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
+        
+        with tab_login:
+            l_email = st.text_input("Email", key="l_email")
+            l_pass = st.text_input("Password", type="password", key="l_pass")
+            if st.button("Login to Workspace", key="login_btn"):
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": l_email, "password": l_pass})
+                    st.session_state.user = res.user
+                    st.session_state.requests_left = fetch_user_limits(l_email)
+                    st.success("Access Granted!")
+                    st.rerun()
+                except Exception:
+                    st.error("Invalid Credentials.")
 
-  if st.button("✨ Generate Image", key="btn_img"):
-    if not img_prompt:
-      st.error("Please enter a prompt first.")
+        with tab_signup:
+            s_email = st.text_input("Email", key="s_email")
+            s_pass = st.text_input("Password", type="password", key="s_pass")
+            if st.button("Register Account", key="signup_btn"):
+                try:
+                    supabase.auth.sign_up({"email": s_email, "password": s_pass})
+                    supabase.table("users").insert({"email": s_email, "requests_left": DEFAULT_CREDITS}).execute()
+                    st.success("Registered! You can login now.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        st.stop()
+    
     else:
-      with st.spinner("Synthesizing image..."):
-        payload = {
-            "model": img_model,
-            "prompt": img_prompt,
-            "n": 1,
-            "size": "1024x1024" if "1:1" in img_aspect else "1024x576",
-        }
-        try:
-          res = requests.post(
-              f"{BASE_URL}/images", headers=get_request_headers(), json=payload
-          )
-          data = res.json()
+        st.markdown(f"**Operator:**\n`{st.session_state.user.email}`")
+        
+        color = "#00C6FF" if st.session_state.requests_left > 0 else "#FF4B4B"
+        st.markdown(f"""
+        <div class="credit-card" style="border-left-color: {color};">
+            <h3 style="margin:0; font-size: 22px; color:{color};">{st.session_state.requests_left}</h3>
+            <p style="margin:0; font-size: 13px; color:#94A3B8;">Operations Remaining</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("**Smart Actions**")
+        if st.button("📊 Web Analytics Report"):
+            st.session_state.messages.append({"role": "user", "content": "Generate an executive summary for optimizing my website's performance and analytics."})
+            st.rerun()
+        if st.button("🗑️ Clear Workspace"):
+            st.session_state.messages = []
+            st.rerun()
+            
+        if st.button("Logout", key="logout_btn"):
+            supabase.auth.sign_out()
+            st.session_state.user = None
+            st.rerun()
 
-          if res.status_code == 200 and "data" in data:
-            image_url = data["data"][0].get("url")
-            st.image(
-                image_url,
-                caption="Generated by Heydoctor AI Studio",
-                use_column_width=True,
-            )
-            deduct_credit()
-            st.success(
-                "Generated successfully! Credits left:"
-                f" {st.session_state.requests_left}"
-            )
-          else:
-            st.error(f"API Error: {data}")
-        except Exception as e:
-          st.error(f"Connection error: {e}")
+# ==========================================
+# 6. ADSTERRA UNLOCK SCREEN
+# ==========================================
+if st.session_state.requests_left <= 0:
+    st.markdown("<h1 class='hero-title' style='text-align:center;'>Access Locked</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='glass-card' style='text-align:center;'>", unsafe_allow_html=True)
+    st.warning("⚠️ **Ecosystem Operations Exhausted**")
+    st.write("Authorize additional compute cycles by visiting our sponsor network.")
+    
+    st.markdown(f"""
+        <a href="{ADSTERRA_SMARTLINK}" target="_blank" style="text-decoration:none;">
+            <div style="background: linear-gradient(90deg, #FF4B4B, #FF904B); color: white; padding: 14px 28px; border-radius: 8px; font-size: 17px; font-weight: bold; margin: 20px auto; width: 60%; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.4); cursor:pointer;">
+                🔓 Unlock {DEFAULT_CREDITS} Compute Cycles
+            </div>
+        </a>
+    """, unsafe_allow_html=True)
+    
+    st.write("---")
+    if st.button("✅ I have authorized via the link (Restore)", use_container_width=True):
+        supabase.table("users").update({"requests_left": DEFAULT_CREDITS}).eq("email", st.session_state.user.email).execute()
+        st.session_state.requests_left = DEFAULT_CREDITS
+        st.success("Compute Cycles Restored! Initializing workspace...")
+        time.sleep(1)
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
 
-# --- VIDEO TAB ---
-with tab_vid:
-  v_col1, v_col2 = st.columns([2, 1])
-  with v_col1:
-    vid_prompt = st.text_area(
-        "Video Prompt:",
-        height=140,
-        placeholder=(
-            "E.g., Drone shot flying through a glowing futuristic portal,"
-            " cinematic lighting, 4k..."
-        ),
-    )
-  with v_col2:
-    vid_model = st.selectbox("Video Model", ["google/veo-3.1-lite", "openai/sora"])
-    vid_duration = st.slider(
-        "Duration (Seconds)", min_value=3, max_value=15, value=5
-    )
+# ==========================================
+# 7. MAIN DASHBOARD & TABS
+# ==========================================
+st.markdown("<h1 class='hero-title'>Heydoctor Web Manager AI</h1>", unsafe_allow_html=True)
+st.markdown("<p class='hero-subtitle'>Command Center & Ecosystem Integrations</p>", unsafe_allow_html=True)
 
-  if st.button("🎥 Generate Video", key="btn_vid"):
-    if not vid_prompt:
-      st.error("Please enter a video prompt first.")
-    else:
-      with st.spinner(
-          f"Rendering {vid_duration}s video via OpenRouter... Please wait."
-      ):
-        payload = {
-            "model": vid_model,
-            "prompt": vid_prompt,
-            "duration": vid_duration,
-            "resolution": "720p",
-            "aspect_ratio": "16:9",
-        }
-        try:
-          dynamic_headers = get_request_headers()
-          res = requests.post(
-              f"{BASE_URL}/videos", headers=dynamic_headers, json=payload
-          )
-          job_data = res.json()
+tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 
-          if res.status_code == 200 and "id" in job_data:
-            job_id = job_data["id"]
+# --- CHAT INTERFACE TAB ---
+with tab_chat:
+    ai_model = st.selectbox("Intelligence Engine", ["google/gemini-2.5-flash", "anthropic/claude-3-haiku", "meta-llama/llama-3-8b-instruct"], label_visibility="collapsed")
+    
+    for msg in st.session_state.messages:
+        if msg["role"] != "system":
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+    if len(st.session_state.messages) == 0:
+        st.markdown(f"""
+            <div class="glass-card">
+                <h3>Welcome to your Workspace</h3>
+                <p style="color: #94A3B8;">Initialize a query below to consume 1 Compute Cycle. You have {st.session_state.requests_left} remaining.</p>
+            </div>
+        """, unsafe_allow_html=True)
 
-            video_url = None
-            for i in range(40):
-              progress_bar.progress((i + 1) * 25)
-              status_text.text(f"Processing rendering pipeline... Step {i+1}/40")
-              time.sleep(4)
+    if prompt := st.chat_input("Enter command sequence..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-              status_res = requests.get(
-                  f"{BASE_URL}/videos/{job_id}", headers=dynamic_headers
-              )
-              status_data = status_res.json()
-              status = status_data.get("status")
+        full_context = [{"role": "system", "content": st.session_state.system_prompt}] + st.session_state.messages
+        optimized_context = optimize_history(full_context)
 
-              if status == "completed":
-                video_url = status_data.get("content_url")
-                progress_bar.progress(100)
-                status_text.text("Render complete!")
-                break
-              elif status == "failed":
-                status_text.text("Render failed on server side.")
-                break
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+            
+            with st.spinner("Synthesizing..."):
+                for chunk in api_manager.stream_completion(optimized_context, model=ai_model):
+                    full_response += chunk
+                    message_placeholder.markdown(full_response + "▌")
+                
+                message_placeholder.markdown(full_response)
+        
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        deduct_credit()
+        st.rerun() 
 
-            if video_url:
-              st.video(video_url)
-              deduct_credit()
-              st.success(
-                  "Video ready! Credits left:"
-                  f" {st.session_state.requests_left}"
-              )
-            else:
-              st.error("Video processing timed out or failed.")
-          else:
-            st.error(f"Failed to start video job: {job_data}")
-        except Exception as e:
-          st.error(f"Request failed: {e}")
-
-# Footer
-st.markdown(
-    "<hr><p style='text-align:center; color:#555;'>Heydoctor AI Studio &bull;"
-    " Built for High-Performance Generation</p>",
-    unsafe_allow_html=True,
-)
-
+# --- EMBED WIDGET TAB ---
+with tab_widget:
+    st.markdown("""
+        <div class="glass-card">
+            <h2>Integrate Heydoctor Web Manager into your App</h2>
+            <p style="color: #94A3B8;">Copy and paste this snippet into the <code>&lt;head&gt;</code> tag of your website. This will deploy the suggestion & analytics module directly to your users.</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    client_id = f"hwm_{hash(st.session_state.user.email)}"
+    
+    widget_code = f"""<!-- Heydoctor Web Manager Integration Snippet -->
+<script>
+  window.HeydoctorWebConfig = {{
+    clientId: "{client_id}",
+    theme: "dark",
+    position: "bottom-right",
+    features: ["analytics", "smart-suggestions"]
+  }};
+</script>
+<script src="https://cdn.heydoctor.ai/v1/widget.js" async defer></script>
+<!-- End Heydoctor Web Manager Snippet -->"""
+    
+    st.code(widget_code, language="html")
+    
+    st.info("💡 **Pro Tip:** Deploying this widget tracks user sessions on your domain and feeds the analytics directly back to this workspace. (API setup required on backend).")
