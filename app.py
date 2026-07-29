@@ -148,7 +148,6 @@ st.markdown("""
 # ==========================================
 # 3. GLOBAL CONFIGURATION (CREDIT LIMITS)
 # ==========================================
-# Yahan credit limit 10 kar di gayi hai
 DEFAULT_CREDITS = 10
 
 try:
@@ -355,10 +354,11 @@ tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 
 # --- CHAT INTERFACE TAB ---
 with tab_chat:
+    # 100% Free Verified Models (Fix for 404 Error)
     ai_model = st.selectbox("Intelligence Engine", [
         "meta-llama/llama-3.1-8b-instruct:free", 
-        "google/gemini-1.5-flash:free", 
-        "mistralai/mistral-7b-instruct:free"
+        "google/gemma-2-9b-it:free", 
+        "microsoft/phi-3-mini-128k-instruct:free"
     ], label_visibility="collapsed")
     
     for msg in st.session_state.messages:
@@ -375,13 +375,16 @@ with tab_chat:
         """, unsafe_allow_html=True)
 
     if prompt := st.chat_input("Enter command sequence..."):
+        # Append User Message
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
+        # Prepare Context
         full_context = [{"role": "system", "content": st.session_state.system_prompt}] + st.session_state.messages
         optimized_context = optimize_history(full_context)
 
+        # Generate Response
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
@@ -393,8 +396,15 @@ with tab_chat:
                 
                 message_placeholder.markdown(full_response)
         
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
-        deduct_credit()
+        # SMART ERROR HANDLING (Fix for 400 Error Loop)
+        if "API Error:" not in full_response and "System Alert:" not in full_response:
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            deduct_credit()
+        else:
+            # Error aane par last prompt hata do taaki next time API call fail na ho
+            if len(st.session_state.messages) > 0:
+                st.session_state.messages.pop()
+                
         st.rerun() 
 
 # --- EMBED WIDGET TAB ---
