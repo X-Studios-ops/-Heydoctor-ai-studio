@@ -25,13 +25,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. PREMIUM UI/UX (GLASSMORPHISM CSS)
+# 2. PREMIUM UI/UX (FLOATING & GLOWING CSS)
 # ==========================================
 st.markdown("""
     <style>
+    /* Animated Gradient Background */
     .stApp {
         background-color: #050505;
-        background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #050505 70%);
+        background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, #050505 80%);
         color: #E2E8F0;
         font-family: 'Inter', -apple-system, sans-serif;
     }
@@ -40,43 +41,68 @@ st.markdown("""
     footer {visibility: hidden;}
     header {background: transparent !important;}
 
-    .glass-card {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
+    /* Floating Animation for Header */
+    @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-8px); }
+        100% { transform: translateY(0px); }
     }
 
     .hero-title {
-        font-size: 3.5rem;
-        font-weight: 800;
+        font-size: 3.8rem;
+        font-weight: 900;
         background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 0.5rem;
-        letter-spacing: -1px;
+        letter-spacing: -1.5px;
+        animation: float 4s ease-in-out infinite;
+        text-shadow: 0px 0px 20px rgba(0, 198, 255, 0.4);
+        text-align: center;
     }
+    
     .hero-subtitle {
         color: #94A3B8;
-        font-size: 1.1rem;
+        font-size: 1.2rem;
         margin-bottom: 2rem;
+        text-align: center;
+        letter-spacing: 1px;
     }
 
+    /* Glassmorphism Cards with Hover Float Effect */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(0, 198, 255, 0.2);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+        transition: all 0.4s ease;
+    }
+    
+    .glass-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 15px 40px rgba(0, 198, 255, 0.2);
+        border: 1px solid rgba(0, 198, 255, 0.5);
+    }
+
+    /* Chat Messages styling */
     .stChatMessage {
         background: transparent !important;
         border: none !important;
     }
     .stChatMessage [data-testid="chatAvatarIcon-user"] {
-        background-color: #334155;
+        background-color: #1E293B;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
     }
     .stChatMessage [data-testid="chatAvatarIcon-assistant"] {
         background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+        box-shadow: 0 0 15px rgba(0, 198, 255, 0.5);
     }
 
+    /* Glowing Buttons */
     div.stButton > button:first-child {
         background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
         color: white;
@@ -86,24 +112,35 @@ st.markdown("""
         padding: 0.5rem 1rem;
         transition: all 0.3s ease;
         width: 100%;
-    }
-    div.stButton > button:first-child:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(0, 198, 255, 0.4);
+        box-shadow: 0 4px 15px rgba(0, 198, 255, 0.3);
     }
     
+    div.stButton > button:first-child:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(0, 198, 255, 0.6);
+    }
+    
+    /* Credit Card in Sidebar */
     .credit-card {
-        background-color: rgba(255, 255, 255, 0.05);
+        background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.2) 100%);
         padding: 20px;
         border-radius: 12px;
         border-left: 5px solid #00C6FF;
         margin-bottom: 20px;
         backdrop-filter: blur(10px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        transition: transform 0.3s ease;
+    }
+    .credit-card:hover {
+        transform: scale(1.02);
     }
     
+    /* Code highlight */
     code {
         color: #00C6FF !important;
         background-color: rgba(0, 198, 255, 0.1) !important;
+        border-radius: 4px;
+        padding: 2px 6px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -111,7 +148,8 @@ st.markdown("""
 # ==========================================
 # 3. GLOBAL CONFIGURATION (CREDIT LIMITS)
 # ==========================================
-DEFAULT_CREDITS = 5
+# Yahan credit limit 10 kar di gayi hai
+DEFAULT_CREDITS = 10
 
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -142,7 +180,7 @@ class OpenRouterManager:
         st.session_state.current_key_index = (st.session_state.current_key_index + 1) % len(self.keys)
         return self.get_current_key()
 
-    def stream_completion(self, messages, model="google/gemini-2.5-flash", temperature=0.7):
+    def stream_completion(self, messages, model="meta-llama/llama-3.1-8b-instruct:free", temperature=0.7):
         url = "https://openrouter.ai/api/v1/chat/completions"
         max_retries = len(self.keys)
         
@@ -261,8 +299,8 @@ with st.sidebar:
         
         color = "#00C6FF" if st.session_state.requests_left > 0 else "#FF4B4B"
         st.markdown(f"""
-        <div class="credit-card" style="border-left-color: {color};">
-            <h3 style="margin:0; font-size: 22px; color:{color};">{st.session_state.requests_left}</h3>
+        <div class="credit-card" style="border-left-color: {color}; box-shadow: 0 0 15px {color}40;">
+            <h3 style="margin:0; font-size: 24px; color:{color}; text-shadow: 0 0 10px {color};">{st.session_state.requests_left}</h3>
             <p style="margin:0; font-size: 13px; color:#94A3B8;">Operations Remaining</p>
         </div>
         """, unsafe_allow_html=True)
@@ -284,14 +322,14 @@ with st.sidebar:
 # 6. ADSTERRA UNLOCK SCREEN
 # ==========================================
 if st.session_state.requests_left <= 0:
-    st.markdown("<h1 class='hero-title' style='text-align:center;'>Access Locked</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='hero-title'>Access Locked</h1>", unsafe_allow_html=True)
     st.markdown("<div class='glass-card' style='text-align:center;'>", unsafe_allow_html=True)
     st.warning("⚠️ **Ecosystem Operations Exhausted**")
     st.write("Authorize additional compute cycles by visiting our sponsor network.")
     
     st.markdown(f"""
         <a href="{ADSTERRA_SMARTLINK}" target="_blank" style="text-decoration:none;">
-            <div style="background: linear-gradient(90deg, #FF4B4B, #FF904B); color: white; padding: 14px 28px; border-radius: 8px; font-size: 17px; font-weight: bold; margin: 20px auto; width: 60%; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.4); cursor:pointer;">
+            <div style="background: linear-gradient(90deg, #FF4B4B, #FF904B); color: white; padding: 14px 28px; border-radius: 8px; font-size: 17px; font-weight: bold; margin: 20px auto; width: 60%; box-shadow: 0 4px 20px rgba(255, 75, 75, 0.6); cursor:pointer; transition: all 0.3s ease;">
                 🔓 Unlock {DEFAULT_CREDITS} Compute Cycles
             </div>
         </a>
@@ -317,12 +355,12 @@ tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 
 # --- CHAT INTERFACE TAB ---
 with tab_chat:
-        ai_model = st.selectbox("Intelligence Engine", [
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "google/gemini-1.5-flash:free",
+    ai_model = st.selectbox("Intelligence Engine", [
+        "meta-llama/llama-3.1-8b-instruct:free", 
+        "google/gemini-1.5-flash:free", 
         "mistralai/mistral-7b-instruct:free"
     ], label_visibility="collapsed")
-
+    
     for msg in st.session_state.messages:
         if msg["role"] != "system":
             with st.chat_message(msg["role"]):
@@ -331,8 +369,8 @@ with tab_chat:
     if len(st.session_state.messages) == 0:
         st.markdown(f"""
             <div class="glass-card">
-                <h3>Welcome to your Workspace</h3>
-                <p style="color: #94A3B8;">Initialize a query below to consume 1 Compute Cycle. You have {st.session_state.requests_left} remaining.</p>
+                <h3 style="color: #00C6FF; text-shadow: 0 0 8px rgba(0,198,255,0.4);">Welcome to your Workspace</h3>
+                <p style="color: #94A3B8;">Initialize a query below to consume 1 Compute Cycle. You have <b style="color:white;">{st.session_state.requests_left}</b> remaining.</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -363,7 +401,7 @@ with tab_chat:
 with tab_widget:
     st.markdown("""
         <div class="glass-card">
-            <h2>Integrate Heydoctor Web Manager into your App</h2>
+            <h2 style="color: #00C6FF; text-shadow: 0 0 10px rgba(0,198,255,0.5);">Integrate Heydoctor Web Manager into your App</h2>
             <p style="color: #94A3B8;">Copy and paste this snippet into the <code>&lt;head&gt;</code> tag of your website. This will deploy the suggestion & analytics module directly to your users.</p>
         </div>
     """, unsafe_allow_html=True)
