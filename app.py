@@ -152,7 +152,7 @@ if st.session_state.requests_left <= 0:
     st.write("Support our ecosystem by visiting the sponsor link below to unlock **2 Free Requests** instantly.")
     
     st.markdown(f"""
-        <a href="{ADSTERRA_SMARTLINK}" target="_blank" style="text-decoration:none;">
+        <a href="{https://www.effectivecpmnetwork.com/sm671ec1ia?key=805cc841e181cb4452e71ba3a9edbf14}" target="_blank" style="text-decoration:none;">
             <div style="background: linear-gradient(90deg, #FF4B4B, #FF904B); color: white; padding: 14px 28px; border-radius: 8px; text-align: center; font-size: 17px; font-weight: bold; margin: 20px auto; width: 60%; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.4); cursor:pointer;">
                 🔓 Unlock 2 Free Requests
             </div>
