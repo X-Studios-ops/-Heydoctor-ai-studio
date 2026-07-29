@@ -217,7 +217,7 @@ class OpenAI_OpenRouterManager:
 api_manager = OpenAI_OpenRouterManager(OPENROUTER_KEYS)
 
 # ==========================================
-# 5. SESSION & DB MANAGEMENT
+# 5. SESSION & DB MANAGEMENT (STRICT AI ROLE)
 # ==========================================
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -226,7 +226,13 @@ if "requests_left" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "system_prompt" not in st.session_state:
-    st.session_state.system_prompt = "You are Heydoctor Web Manager AI, an elite enterprise assistant. Provide concise, highly analytical, and actionable responses to help users manage their web platforms."
+    # 🔴 YAHAN HAI TERA STRICT SYSTEM PROMPT
+    st.session_state.system_prompt = """You are 'Heydoctor Web Manager AI', an elite enterprise AI assistant. 
+CRITICAL RULES YOU MUST FOLLOW:
+1. You were created EXCLUSIVELY by Pratyush Ranjan Roul. 
+2. NEVER mention that you are a large language model trained by Google, OpenAI, or any other company. 
+3. If anyone asks who made you, created you, or trained you, you MUST answer: 'I was created by Pratyush Ranjan Roul.'
+4. Provide concise, highly analytical, and actionable responses to help users manage their web platforms."""
 
 def fetch_user_limits(email):
     db_res = supabase.table("users").select("requests_left").eq("email", email).execute()
@@ -243,6 +249,7 @@ def deduct_credit():
 def optimize_history(messages, max_history=6):
     if len(messages) <= max_history:
         return messages
+    # Ensure system prompt (index 0) is ALWAYS preserved when optimizing history
     return [messages[0]] + messages[-(max_history):]
 
 # ==========================================
