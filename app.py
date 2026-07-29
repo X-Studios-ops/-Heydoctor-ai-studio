@@ -354,7 +354,6 @@ tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 
 # --- CHAT INTERFACE TAB ---
 with tab_chat:
-    # 100% Free Verified Models (Fix for 404 Error)
     ai_model = st.selectbox("Intelligence Engine", [
         "meta-llama/llama-3.1-8b-instruct:free", 
         "google/gemma-2-9b-it:free", 
@@ -375,16 +374,15 @@ with tab_chat:
         """, unsafe_allow_html=True)
 
     if prompt := st.chat_input("Enter command sequence..."):
-        # Append User Message
+        # 1. User ka prompt dikhao aur save karo
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Prepare Context
         full_context = [{"role": "system", "content": st.session_state.system_prompt}] + st.session_state.messages
         optimized_context = optimize_history(full_context)
 
-        # Generate Response
+        # 2. Response Generate karo
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
@@ -396,16 +394,15 @@ with tab_chat:
                 
                 message_placeholder.markdown(full_response)
         
-        # SMART ERROR HANDLING (Fix for 400 Error Loop)
-        if "API Error:" not in full_response and "System Alert:" not in full_response:
+        # 3. Bug Fix: Smart Error Handling (No popping user messages!)
+        if "**API Error:**" not in full_response and "**System Alert:**" not in full_response:
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             deduct_credit()
+            st.rerun() 
         else:
-            # Error aane par last prompt hata do taaki next time API call fail na ho
-            if len(st.session_state.messages) > 0:
-                st.session_state.messages.pop()
-                
-        st.rerun() 
+            # Server error hone par ek neat error message save hoga, credit nahi katega.
+            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **Server Busy:** The free AI model is currently overloaded or unavailable. Please try again or switch to a different model from the list above."})
+            st.rerun() 
 
 # --- EMBED WIDGET TAB ---
 with tab_widget:
