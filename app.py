@@ -147,9 +147,8 @@ try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
     SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     ADSTERRA_SMARTLINK = st.secrets["ADSTERRA_SMARTLINK"]
-    OPENROUTER_KEYS = st.secrets["OPENROUTER_KEYS"]
 except Exception as e:
-    st.error(f"Missing Secrets Configuration: {e}.")
+    st.error(f"Missing DB/Adsterra Secrets: {e}.")
     st.stop()
 
 @st.cache_resource
@@ -159,62 +158,86 @@ def init_supabase():
 supabase = init_supabase()
 
 # ==========================================
-# 4. OPENAI CLIENT MANAGER (OPENROUTER)
+# 4. ADVANCED API & MEMORY MANAGEMENT
 # ==========================================
-class OpenAI_OpenRouterManager:
-    def __init__(self, keys):
-        self.keys = keys
-        if "current_key_index" not in st.session_state:
-            st.session_state.current_key_index = 0
+# Initialize states
+if "api_keys" not in st.session_state:
+    st.session_state.api_keys = []
+if "key_status" not in st.session_state:
+    st.session_state.key_status = {}
 
-    def get_client(self):
-        current_key = self.keys[st.session_state.current_key_index]
-        return OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=current_key,
-            default_headers={
-                "HTTP-Referer": "https://heydoctor.ai",
-                "X-Title": "Heydoctor Web Manager AI"
-            }
-        )
+def load_api_keys():
+    keys = []
+    try:
+        if hasattr(st, "secrets"):
+            if "OPENROUTER_KEYS" in st.secrets:
+                # Support for list format
+                secret_keys = st.secrets["OPENROUTER_KEYS"]
+                if isinstance(secret_keys, list):
+                    keys.extend(secret_keys)
+                elif isinstance(secret_keys, str):
+                    keys.append(secret_keys)
+            else:
+                # Support for numbered keys format (like in ref app)
+                for i in range(1, 10): 
+                    key_name = f"OPENROUTER_API_KEY_{i}"
+                    if key_name in st.secrets:
+                        val = st.secrets[key_name]
+                        if isinstance(val, str) and val.strip():
+                            keys.append(val.strip())
+    except Exception:
+        pass
+    return keys
 
-    def rotate_key(self):
-        st.session_state.current_key_index = (st.session_state.current_key_index + 1) % len(self.keys)
-        return self.get_client()
-
-    def stream_completion(self, messages, model="google/gemini-2.5-flash", temperature=0.7):
-        max_retries = len(self.keys)
+def resilient_stream_api_call(messages, available_keys, model="google/gemini-2.5-flash", max_retries=3):
+    """Advanced API rotation with exponential backoff and timeout handling."""
+    valid_keys = [k for k in available_keys if k and k.strip()]
+    if not valid_keys:
+        yield "⚠️ Error: No valid API keys found. Please configure them in the sidebar."
+        return
         
-        for attempt in range(max_retries):
-            client = self.get_client()
+    current_time = time.time()
+    # Sort keys by prioritizing those that haven't failed recently
+    valid_keys.sort(key=lambda k: st.session_state.key_status.get(k, 0))
+    
+    for attempt in range(max_retries):
+        for key in valid_keys:
+            # Skip keys on cooldown (30 seconds)
+            if current_time - st.session_state.key_status.get(key, 0) < 30:
+                continue
+                
             try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    max_tokens=1500,
-                    temperature=temperature,
-                    stream=True
+                client = OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=key,
+                    default_headers={"HTTP-Referer": "https://heydoctor.ai", "X-Title": "Heydoctor Web Manager AI"}
                 )
                 
+                response = client.chat.completions.create(
+                    model=model,  
+                    messages=messages,
+                    max_tokens=1500,
+                    temperature=0.7,
+                    stream=True,
+                    timeout=15 
+                )
+                
+                # Reset key status on success
+                st.session_state.key_status[key] = 0
                 for chunk in response:
-                    if chunk.choices[0].delta.content is not None:
+                    if chunk.choices[0].delta.content:
                         yield chunk.choices[0].delta.content
                 return 
-
-            except openai.RateLimitError:
-                self.rotate_key()
-                time.sleep(1)
-                continue
-            except openai.APIError as e:
-                yield f"\n\n**API Error:** {str(e)}"
-                return
+                
             except Exception as e:
-                self.rotate_key()
+                # Put key on cooldown
+                st.session_state.key_status[key] = time.time()
                 continue
                 
-        yield "\n\n**System Alert:** All API endpoints overloaded. Try again."
-
-api_manager = OpenAI_OpenRouterManager(OPENROUTER_KEYS)
+        # Exponential backoff if all keys fail
+        time.sleep(2 ** attempt)
+        
+    yield "⚠️ **Server Busy:** All API endpoints are currently overloaded or on cooldown. Please try again in a minute."
 
 # ==========================================
 # 5. SESSION & DB MANAGEMENT (STRICT AI ROLE)
@@ -226,7 +249,6 @@ if "requests_left" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "system_prompt" not in st.session_state:
-    # 🔴 YAHAN HAI TERA STRICT SYSTEM PROMPT
     st.session_state.system_prompt = """You are 'Heydoctor Web Manager AI', an elite enterprise AI assistant. 
 CRITICAL RULES YOU MUST FOLLOW:
 1. You were created EXCLUSIVELY by Pratyush Ranjan Roul. 
@@ -249,15 +271,29 @@ def deduct_credit():
 def optimize_history(messages, max_history=6):
     if len(messages) <= max_history:
         return messages
-    # Ensure system prompt (index 0) is ALWAYS preserved when optimizing history
     return [messages[0]] + messages[-(max_history):]
 
 # ==========================================
-# 6. AUTHENTICATION (SIDEBAR)
+# 6. AUTHENTICATION & SETTINGS (SIDEBAR)
 # ==========================================
+if not st.session_state.api_keys:
+    st.session_state.api_keys = load_api_keys()
+
 with st.sidebar:
     st.markdown("### 🧬 Heydoctor Manager")
     st.caption("Enterprise Intelligence Core")
+    
+    # API Key Active Indicator
+    if st.session_state.api_keys:
+        st.success(f"🟢 {len(st.session_state.api_keys)} API Keys Active")
+    else:
+        st.error("🔴 No API Keys found!")
+        fallback_key = st.text_input("Enter OpenRouter API Key", type="password")
+        if fallback_key:
+            st.session_state.api_keys = [fallback_key]
+            st.rerun()
+    
+    st.markdown("---")
     
     if st.session_state.user is None:
         tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
@@ -313,14 +349,13 @@ with st.sidebar:
 # 7. PRE-LOGIN MAIN SCREEN & ADSTERRA
 # ==========================================
 if st.session_state.user is None:
-    # Ekdum mast Welcome UI before Login
     st.markdown("<div style='margin-top: 10vh;'></div>", unsafe_allow_html=True)
     st.markdown("<h1 class='hero-title'>Heydoctor Web Manager AI</h1>", unsafe_allow_html=True)
     
     st.markdown("""
         <div class='glass-card' style='text-align:center; max-width: 550px; margin: 30px auto; padding: 40px 20px;'>
             <h2 style='color: #E2E8F0; margin-bottom: 15px;'>Welcome to the Studio</h2>
-            <p style='color: #94A3B8; font-size: 1.15rem; margin-bottom: 25px;'>Please <b>Login</b> and <b>Sign Up</b> from the sidebar to continue.</p>
+            <p style='color: #94A3B8; font-size: 1.15rem; margin-bottom: 25px;'>Please <b>Login</b> or <b>Sign Up</b> from the sidebar to continue.</p>
             <hr style='border-color: rgba(255,255,255,0.05); margin: 25px 0;'>
             <p style='color: #00C6FF; font-weight: 700; font-size: 1.2rem; text-shadow: 0 0 10px rgba(0, 198, 255, 0.4); margin-bottom: 0;'>✨ Created by Pratyush Ranjan Roul</p>
         </div>
@@ -361,7 +396,6 @@ tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 
 # --- CHAT INTERFACE TAB ---
 with tab_chat:
-    # Ab sirf Gemini-2.5-flash ka option aayega
     ai_model = st.selectbox("Intelligence Engine", [
         "google/gemini-2.5-flash"
     ], label_visibility="collapsed")
@@ -392,18 +426,19 @@ with tab_chat:
             full_response = ""
             
             with st.spinner("Synthesizing..."):
-                for chunk in api_manager.stream_completion(optimized_context, model=ai_model):
+                # Using the newly adapted resilient stream function
+                for chunk in resilient_stream_api_call(optimized_context, st.session_state.api_keys, model=ai_model):
                     full_response += chunk
                     message_placeholder.markdown(full_response + "▌")
                 
                 message_placeholder.markdown(full_response)
         
-        if "**API Error:**" not in full_response and "**System Alert:**" not in full_response:
+        if "**Error:**" not in full_response and "**Server Busy:**" not in full_response:
             st.session_state.messages.append({"role": "assistant", "content": full_response})
             deduct_credit()
             st.rerun() 
         else:
-            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **Server Busy:** The free AI model is currently overloaded or unavailable. Please try again later."})
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
             st.rerun() 
 
 # --- EMBED WIDGET TAB ---
