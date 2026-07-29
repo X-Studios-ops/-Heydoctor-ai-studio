@@ -317,8 +317,12 @@ tab_chat, tab_widget = st.tabs(["💬 Command Center", "🔌 Embed Widget"])
 
 # --- CHAT INTERFACE TAB ---
 with tab_chat:
-    ai_model = st.selectbox("Intelligence Engine", ["google/gemini-2.5-flash", "anthropic/claude-3-haiku", "meta-llama/llama-3-8b-instruct"], label_visibility="collapsed")
-    
+        ai_model = st.selectbox("Intelligence Engine", [
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "google/gemini-1.5-flash:free",
+        "mistralai/mistral-7b-instruct:free"
+    ], label_visibility="collapsed")
+
     for msg in st.session_state.messages:
         if msg["role"] != "system":
             with st.chat_message(msg["role"]):
